@@ -36,7 +36,11 @@ jobs:
       - name: Locate zip
         id: zip
         run: |
-          path=$(ls "$HOME/build/packages"/agent_fwdr-*.zip | head -1)
+          # elastic-package resolves its build directory by walking up from cwd for any ancestor
+          # named "build". On a runner with no ~/build, it falls back to <repoRoot>/build.
+          path=$(ls "${GITHUB_WORKSPACE}/build/packages"/agent_fwdr-*.zip \
+                    "$HOME/build/packages"/agent_fwdr-*.zip 2>/dev/null | head -1)
+          [ -n "$path" ] || { echo "ERROR: could not locate agent_fwdr zip" >&2; exit 1; }
           echo "path=$path" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release

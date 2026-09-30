@@ -275,7 +275,7 @@ printf '%s' "$agent_id" > agent-id.txt
 echo "INFO: agent id = $agent_id"
 
 # Wait for the agent to apply the updated policy revision.
-# enable-all-streams.sh wrote the expected revision to expected-policy-revision.txt.
+# set-extra-permissions.sh wrote the expected revision to expected-policy-revision.txt.
 # Policy revision match means the agent has finished reloading its inputs, so the
 # lumberjack listener is ready before we send events.
 expected_revision=$(cat expected-policy-revision.txt | tr -d '[:space:]')

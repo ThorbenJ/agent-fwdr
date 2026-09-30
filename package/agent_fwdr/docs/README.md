@@ -6,17 +6,27 @@ Logstash.
 ## Overview
 
 Not every Elastic Agent can reach Elasticsearch. Agents land in DMZs, air-gapped segments, remote
-sites, and networks whose egress policy permits exactly one hop to exactly one host. The established
-answer is to deploy Logstash purely as a relay — a second product, a JVM, and its own configuration
-and upgrade cycle, for the sole purpose of moving bytes between networks.
+sites, and networks whose egress policy permits exactly one hop to exactly one host. Those agents
+still need to ship data.
 
-Agent Forwarder turns a Fleet-managed Elastic Agent into that relay instead. A downstream agent
-points its existing **Logstash output** at a forwarder agent, and the forwarder passes the events on
-to Elasticsearch. No JVM, no second product, no separate configuration language.
+Agent Forwarder turns a Fleet-managed Elastic Agent into that relay. A downstream agent points its
+existing **Logstash output** at a forwarder agent, and the forwarder passes the events on to
+Elasticsearch. No JVM, no second product, no separate configuration language.
 
 A forwarded document is intended to be indistinguishable from one the downstream agent would have
 sent directly: same data stream, same ingest pipeline, same field structure, same event timestamp.
 The only addition is a `fleet.forwarder.*` breadcrumb recording which forwarder handled the event.
+
+### Where this fits
+
+If restricted agents can reach Fleet Server and Elasticsearch through an HTTP(S) proxy, use that
+instead — it needs no extra component. This integration is for when a proxy is not enough: either a
+local Fleet Server must be deployed inside the segment, or there is a diode requirement (a proxy
+that forwards the Elasticsearch API is not a diode; lumberjack is, because the segment never touches
+the API). In both cases, this integration can run on the same agent that hosts the local Fleet
+Server, so one agent handles both configuration and data. If you already run Logstash for other
+inputs (SNMP, JDBC, …), use it as the relay. Full comparison:
+[https://github.com/ThorbenJ/agent-fwdr#where-this-fits](https://github.com/ThorbenJ/agent-fwdr#where-this-fits)
 
 ### Compatibility
 
@@ -32,8 +42,10 @@ operation documents pass straight through to their real home and little accumula
 
 ### Supported use cases
 
-- Agents in a DMZ or other restricted segment permitted a single hop to one internal host.
-- Remote sites shipping through one egress point.
+- Co-located with a local Fleet Server on the segment's egress host, so one agent handles both
+  configuration and data traffic.
+- Segments with a diode requirement: downstream agents speak only the one-way lumberjack protocol
+  and never access the Elasticsearch API.
 - Replacing a Logstash instance that exists only to relay Elastic Agent traffic.
 
 ## What do I need to use this integration?
@@ -84,6 +96,11 @@ actually send, so one forwarder policy covers all downstream agents assigned to 
 
 Mutual TLS is strongly recommended — without it, anything that can reach the port can inject
 documents into any data stream the forwarder has access to.
+
+**TLS requires both a server certificate and a key.** The server certificate and key fields must be
+filled in for the `ssl:` block to be rendered at all; configuring only **Trusted client certificate
+authorities** without the server certificate and key leaves the listener running **plaintext,
+silently**.
 
 Set the **Server SSL certificate** and **Server SSL certificate key** fields to the paths of the
 forwarder's certificate and private key. Add each trusted client certificate authority to **Trusted
@@ -157,7 +174,10 @@ its index template and pipeline do not exist and the rerouted document falls bac
 ## Troubleshooting
 
 **Documents accumulating in `agent_fwdr.forwarded`.** They are not being rerouted. Check
-`fleet.forwarder.intended_data_stream.*` to see where each document was destined.
+`event.kind` — a value of `pipeline_error` means the ingest pipeline could not unwrap the payload
+(see `error.message` for the specific processor that failed). For documents that did unwrap,
+`fleet.forwarder.*` contains the relay hop breadcrumb; `fleet.forwarder.data_stream.*` records the
+forwarder's own data stream at the time the document was received.
 
 **`security_exception` in the agent logs.** The most common cause is a missing index grant for
 the type being forwarded. On the integration policy page, expand **Advanced options** and verify
@@ -175,8 +195,9 @@ GET /_security/api_key?id=<api_key_id>
 you added them in step 2.
 
 **Nothing arrives at all.** Check that **Listen address** is `0.0.0.0` rather than the loopback
-default, that the port is reachable, and — if TLS is enabled — that the downstream agent's key is
-in PKCS#8 format.
+default, that the port is reachable, and — if TLS is enabled — that both the server certificate
+and key fields are filled in (the SSL block is only rendered when the server certificate is set),
+and that the downstream agent's key is in PKCS#8 format.
 
 **Events have the wrong timestamp.** Agent Forwarder restores `@timestamp` from the forwarded
 payload; the receipt time is kept separately as `fleet.forwarder.received_at`. If `@timestamp`

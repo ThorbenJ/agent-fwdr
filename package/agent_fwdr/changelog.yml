@@ -1,4 +1,16 @@
 # newer versions go on top
+- version: "0.6.1"
+  changes:
+    - description: >-
+        Align documentation across all three docs (README.md, package docs, CONCEPT.md). Add
+        architecture context explaining when to use a proxy vs this integration; document the diode
+        property provided by the lumberjack protocol. Expand CONCEPT.md with build mechanics, package
+        configuration decisions, test harness reference, fixture contract, failure-mode catalogue,
+        and release/CI notes. Fix a troubleshooting reference to a non-existent field
+        (fleet.forwarder.intended_data_stream.*); document the TLS trap where configuring only the
+        CA without a server certificate leaves the listener plaintext.
+      type: enhancement
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/3
 - version: "0.6.0"
   changes:
     - description: >-
