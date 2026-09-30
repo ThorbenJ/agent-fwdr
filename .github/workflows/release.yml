@@ -1,0 +1,46 @@
+name: Release
+
+# Disabled: uncomment the `on:` block below to enable automatic releases on version tags.
+# on:
+#   push:
+#     tags:
+#       - 'v[0-9]*'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elastic-package (latest)
+        run: |
+          tag=$(curl -fsSL https://api.github.com/repos/elastic/elastic-package/releases/latest \
+            | jq -r .tag_name)
+          version=${tag#v}
+          curl -fsSL -o ep.tar.gz \
+            "https://github.com/elastic/elastic-package/releases/download/${tag}/elastic-package_${version}_linux_amd64.tar.gz"
+          tar xzf ep.tar.gz elastic-package
+          sudo mv elastic-package /usr/local/bin/
+          elastic-package version
+
+      - name: Build package
+        working-directory: package/agent_fwdr
+        run: elastic-package build
+
+      - name: Locate zip
+        id: zip
+        run: |
+          path=$(ls "$HOME/build/packages"/agent_fwdr-*.zip | head -1)
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.zip.outputs.path }}
+          generate_release_notes: true
