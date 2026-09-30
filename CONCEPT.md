@@ -128,43 +128,50 @@ Documents whose payload carries no dataset (non-Fleet shippers, or payloads that
 fall through the reroute condition and stay in `agent_fwdr.forwarded`, where dynamic mapping
 accepts them.
 
-## Companion data streams: `forwarded_metrics` and `forwarded_traces`
+## Cross-type write permissions
 
 Fleet derives an agent's output API key permissions from the **enabled** data streams in its
-policy. Each enabled data stream contributes index grants of the form `{type}-*-*` to the agent's
-API key. The `forwarded` data stream contributes `logs-*-*` — but cross-type rerouting also
-requires `metrics-*-*` and `traces-*-*`.
+policy. The `forwarded` data stream (type `logs`) contributes `logs-*-*` automatically via
+`dynamic_dataset: true` + `dynamic_namespace: true`. Cross-type rerouting — metrics or traces
+events arriving on the lumberjack listener — also requires `metrics-*-*` and `traces-*-*` in the
+API key, but a single `logs`-type data stream does not grant them.
 
-`forwarded_metrics` and `forwarded_traces` exist solely to contribute those grants. No downstream
-client is intended to connect to them; all lumberjack traffic arrives on the single
-`0.0.0.0:5044` listener of the `forwarded` data stream. The companion streams carry no routing
-rules and no ingest logic.
+The mechanism: Fleet's `additional_datastreams_permissions` field on a package policy appends
+arbitrary index patterns to the API key role descriptor. In the Fleet UI this appears as the
+**"Add a reroute processor permission"** combobox under *Advanced options* on the integration
+policy page. Users type in e.g. `metrics-*-*` and `traces-*-*` and those grants are included in
+the next key re-issue. Fleet validates entries against `/^(logs|metrics|traces|synthetics|profiles)-(.+)$/`.
 
-### Why not `enabled: false`?
+This is a required manual step documented in the integration README. The failure mode if omitted is
+silent: the reroute processor sets `_index` to the target data stream, the bulk request returns 403
+for that document, and the agent drops it after retries. The event does not fall back to
+`agent_fwdr.forwarded`. The troubleshooting section covers this.
 
-A natural first instinct is to configure the companion streams with `enabled: false` so the agent
-skips creating a listener for them. This does not work with **elastic-otel-collector**, the
-OpenTelemetry-based agent runner used by Elastic Agent 9.x.
+### Why not companion data streams?
 
-The elastic-otel-collector creates one `filebeatreceiver` component per lumberjack stream in the
-policy. A receiver whose input configuration contains only `enabled: false` (and no other valid
-input definition) causes Filebeat to error:
+An earlier design (v0.5.0) included two companion data streams — `forwarded_metrics` (type
+`metrics`) and `forwarded_traces` (type `traces`) — whose sole purpose was to contribute those
+grants automatically, without any user action. Each was a valid lumberjack stream that listened on
+a loopback-only address (`127.0.0.2:5044`, `127.0.0.3:5044`) so it could not receive external
+connections while still producing a non-empty input config.
+
+The loopback trick was necessary because **elastic-otel-collector**, the OpenTelemetry-based agent
+runner used by Elastic Agent 9.x, creates one `filebeatreceiver` component per lumberjack stream
+in the policy. A receiver whose rendered config is empty or contains only `enabled: false` (and no
+valid input definition) causes Filebeat to error:
 
 ```
 no modules or inputs enabled and configuration reloading disabled
 ```
 
-This crashes the entire `lumberjack-default` component — closing the main `0.0.0.0:5044`
-listener with it.
+This crashes the entire `lumberjack-default` component — taking the real `0.0.0.0:5044` listener
+with it. `enabled: false` is therefore not a safe option with the current agent architecture.
 
-The workaround: the companion stream templates configure unique **loopback-only** listen addresses
-(`127.0.0.2:5044` and `127.0.0.3:5044`). Each receiver initialises successfully and the agent
-starts without error, but the addresses are unreachable from any external client. The single
-`0.0.0.0:5044` listener on the `forwarded` stream remains the only externally accessible port.
-
-This is a known limitation of the current agent architecture. When elastic-otel-collector gains
-the ability to handle `enabled: false` gracefully on lumberjack streams, the loopback addresses
-can be removed from the companion stream templates.
+v0.6.0 removes the companion data streams and documents the manual permission step instead. Two
+upstream changes would eliminate the manual step: (1) Fleet / package-spec support for declaring
+`additional_datastreams_permissions` defaults in a package manifest so they are pre-populated when
+a policy is created; (2) elastic-otel-collector handling `enabled: false` on lumberjack streams
+gracefully (skipping the receiver rather than crashing). Until then, the manual step remains.
 
 ## Boundaries
 
@@ -264,10 +271,12 @@ A self-contained integration test. Does everything in one run:
 
 2. **Deploys its own agent** — `install_agent` + `add_package_policy` (lumberjack, port 5044).
 
-3. **Widens the package policy** — `add_package_policy` enables only one data stream; the other two
-   (`forwarded_metrics`, `forwarded_traces`) must be enabled via Fleet API PUT so Fleet grants the
-   agent `logs-*-*`, `metrics-*-*`, and `traces-*-*` in its output API key. This is an EP gap
-   (`packagepolicy.go buildStreamsForInput`).
+3. **Sets extra permissions** — `elastic-package` has no support for `additional_datastreams_permissions`
+   (absent from the `PackagePolicy` struct in `internal/kibana/policies.go`, from `add_package_policy`'s
+   config schema, and from the system test config). A raw Fleet API PUT is the only route; the txtar
+   sets `additional_datastreams_permissions: ["metrics-*-*", "traces-*-*"]` on the package policy so
+   Fleet grants those index patterns in the output API key alongside the automatic `logs-*-*`. This is
+   an EP gap recorded in the txtar header comment.
 
 4. **Confirms the API key** — polls `GET /_security/api_key` until all three grants are present.
    This is both the assertion and the synchronisation barrier — events are not sent until the agent
@@ -298,8 +307,11 @@ A self-contained integration test. Does everything in one run:
   API. Static timestamps are fine.
 - **System**: sends the 4-event ndjson over lumberjack and asserts the probe (event 4) lands in
   `logs-agent_fwdr.forwarded-<ns>`. Events 1–3 reroute to shared target data streams; the system
-  test makes no assertion on them. The cpu event may be rejected by TSDB (static date outside the
-  write window) but that is outside the tested data stream and does not fail the system test.
+  test makes no assertion on them. `elastic-package test system` cannot set
+  `additional_datastreams_permissions`, so the system-test agent holds only `logs-*-*`. The cpu
+  (metrics) and APM (traces) events will be rejected on reroute with 403 — this is expected and
+  does not fail the test. `reroute.txtar` is the only test that exercises cross-type routing end
+  to end.
 
 ### Debugging
 

@@ -3,8 +3,10 @@ type: logs
 dataset: agent_fwdr.forwarded
 elasticsearch:
   # The forwarder writes to whatever data stream the payload says it came from.
-  # dynamic_dataset + dynamic_namespace grant logs-*-*, but forwarded events may be metrics or
-  # traces. The additional index entries cover those types.
+  # dynamic_dataset + dynamic_namespace grant logs-*-* automatically.
+  # To also write to metrics-*-* or traces-*-*, add those patterns via
+  # additional_datastreams_permissions on the package policy (Fleet UI: Advanced options →
+  # "Add a reroute processor permission").
   dynamic_dataset: true
   dynamic_namespace: true
   index_template:

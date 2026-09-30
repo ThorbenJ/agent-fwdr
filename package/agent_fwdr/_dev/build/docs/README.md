@@ -192,43 +192,4 @@ to the documentation of the originating integration for field definitions.
 Agent Forwarder adds one namespace to every event: `fleet.forwarder.*`, a breadcrumb identifying
 the relay hop. These fields are listed below.
 
-**Exported fields**
-
-| Field | Description | Type |
-|---|---|---|
-| @timestamp | Event timestamp. | date |
-| data_stream.dataset | Data stream dataset. | constant_keyword |
-| data_stream.namespace | Data stream namespace. | constant_keyword |
-| data_stream.type | Data stream type. | constant_keyword |
-| ecs.version | ECS version this event conforms to. `ecs.version` is a required field and must exist in all events. When querying across multiple indices -- which may conform to slightly different ECS versions -- this field lets integrations adjust to the schema version of the events. | keyword |
-| event.dataset | Event dataset. | keyword |
-| fleet.forwarder.agent.ephemeral_id | Ephemeral identifier of the forwarding Elastic Agent process. | keyword |
-| fleet.forwarder.agent.id | Unique identifier of the forwarding Elastic Agent. | keyword |
-| fleet.forwarder.agent.name | Name of the forwarding Elastic Agent, typically its hostname. | keyword |
-| fleet.forwarder.agent.type | Beat type underlying the forwarding Elastic Agent. | keyword |
-| fleet.forwarder.agent.version | Version of the forwarding Elastic Agent. | keyword |
-| fleet.forwarder.data_stream.dataset | Data stream dataset the forwarder itself was writing to. | keyword |
-| fleet.forwarder.data_stream.namespace | Data stream namespace the forwarder itself was writing to. | keyword |
-| fleet.forwarder.data_stream.type | Data stream type the forwarder itself was writing to. | keyword |
-| fleet.forwarder.ecs.version | ECS version the forwarder itself was stamping on events. | keyword |
-| fleet.forwarder.elastic_agent.id | Unique identifier of the forwarding Elastic Agent. | keyword |
-| fleet.forwarder.elastic_agent.snapshot | Whether the forwarding Elastic Agent is a snapshot build. | boolean |
-| fleet.forwarder.elastic_agent.version | Version of the forwarding Elastic Agent. | keyword |
-| fleet.forwarder.event.dataset | Event dataset the forwarder itself was writing to. | keyword |
-| fleet.forwarder.host.name | Hostname of the machine running the forwarder. Normally absent, because the input sets publisher_pipeline.disable_host to stop libbeat adding it. | keyword |
-| fleet.forwarder.input.type | Input type on the forwarder. Always 'lumberjack'. | keyword |
-| fleet.forwarder.metadata | The upstream beat's '@metadata', carrying its input_id, stream_id and intended document _id. Preserved for correlation. Note that _id is not reapplied as this document's ID, so integrations relying on it for deduplication lose that property across the hop. Flattened because its contents vary by sender and beat version. | flattened |
-| fleet.forwarder.received_at | Time at which the forwarder received the event. Useful for measuring relay lag. | date |
-| fleet.forwarder.source.address | Address and port the forwarded connection originated from. | keyword |
-| fleet.forwarder.tags | Tags configured on the forwarder's listener, kept apart from the forwarded event's own tags. | keyword |
-| fleet.forwarder.tls.client.subject | Common name of the client certificate presented by the downstream agent, when mutual TLS is enabled. This is the only trustworthy per-sender discriminator. | keyword |
-| fleet.forwarder.upstream | When an event has passed through more than one forwarder, the previous hop's fleet.forwarder breadcrumb is moved here before the current hop's breadcrumb is written. Flattened because the structure mirrors fleet.forwarder and can chain to arbitrary depth. | flattened |
-| input.type | Type of Filebeat input. | keyword |
-| log.file.path | Full path to the log file this event came from, including the file name. It should include the drive letter, when appropriate. If the event wasn't read from a log file, do not populate this field. | keyword |
-| message | Log contents. | match_only_text |
-| service.environment | Identifies the environment where the service is running. If the same service runs in different environments (production, staging, QA, development, etc.), the environment can identify other instances of the same service. Can also group services and applications from the same environment. | keyword |
-| service.name | Name of the service data is collected from. The name of the service is normally user given. This allows for distributed services that run on multiple hosts to correlate the related instances based on the name. In the case of Elasticsearch the `service.name` could contain the cluster name. For Beats the `service.name` is by default a copy of the `service.type` field if no name is specified. | keyword |
-| tags | User defined tags. | keyword |
-| trace.id | Unique identifier of the trace. A trace groups multiple events like transactions that belong together. For example, a user request handled by multiple inter-connected services. | keyword |
-| transaction.id | Unique identifier of the transaction within the scope of its trace. A transaction is the highest level of work measured within a service, such as a request to a server. | keyword |
-
+{{fields "forwarded"}}

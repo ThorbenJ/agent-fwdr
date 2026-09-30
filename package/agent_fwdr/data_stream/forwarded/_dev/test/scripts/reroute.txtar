@@ -22,10 +22,12 @@
 # For the elastic-package team — four gaps this test works around, each a candidate
 # upstream feature:
 #
-#   (a) add_package_policy enables exactly one data stream per policy
-#       (internal/kibana/packagepolicy.go buildStreamsForInput). No flag exists to
-#       enable siblings. Workaround: exec curl GET/PUT to enable all streams after
-#       the policy is created.
+#   (a) elastic-package has no support for additional_datastreams_permissions — absent from
+#       the PackagePolicy struct (internal/kibana/policies.go), from add_package_policy's
+#       config schema (internal/testrunner/script/data_stream.go), and from the system test
+#       config (internal/testrunner/runners/system/test_config.go). Workaround: exec curl
+#       GET/PUT to set additional_datastreams_permissions on the package policy so Fleet
+#       includes metrics-*-* and traces-*-* in the output API key.
 #
 #   (b) No primitive to inspect the agent's output API key permissions.
 #       Workaround: exec curl GET /_security/api_key, polling until all three
@@ -60,14 +62,12 @@ add_package -profile ${CONFIG_PROFILES}/${PROFILE}
 install_agent -profile ${CONFIG_PROFILES}/${PROFILE} -container_name AGENT_CONTAINER -network_name AGENT_NETWORK -timeout 5m
 
 # Create a package policy for the forwarded data stream (lumberjack input, port 5044).
-# This enables only the forwarded data stream — forwarded_metrics and forwarded_traces
-# are disabled by add_package_policy. See gap (a) above.
 add_package_policy -profile ${CONFIG_PROFILES}/${PROFILE} -timeout 2m policy-config.yml FWD_DS
 
-# Enable all three data streams (forwarded, forwarded_metrics, forwarded_traces) on the
-# package policy so Fleet grants the agent logs-*-*, metrics-*-*, and traces-*-* in its
-# output API key. See gaps (a) and (b) above.
-exec sh enable-all-streams.sh
+# Set additional_datastreams_permissions on the package policy so Fleet grants the agent
+# metrics-*-* and traces-*-* alongside the automatic logs-*-* in its output API key.
+# See gaps (a) and (b) above.
+exec sh set-extra-permissions.sh
 
 # Poll until all three index grants are present in the output API key.
 # This also acts as a synchronisation barrier — events must not be sent until the agent
@@ -167,10 +167,10 @@ install_integration() {
 install_integration system
 install_integration apm
 
--- enable-all-streams.sh --
+-- set-extra-permissions.sh --
 #!/bin/sh
-# Enable all data streams on the agent_fwdr package policy so Fleet grants
-# logs-*-*, metrics-*-*, and traces-*-* in the output API key.
+# Set additional_datastreams_permissions on the agent_fwdr package policy so Fleet
+# grants metrics-*-* and traces-*-* in the output API key alongside the automatic logs-*-*.
 # See reroute.txtar gap (a).
 set -eu
 
@@ -207,7 +207,7 @@ jq -re '[.items[] | select(.package.name == "agent_fwdr")][0]
 
 echo "INFO: found package policy $policy_id"
 
-# Fetch the full policy, enable all inputs and streams, strip read-only fields
+# Fetch the full policy, set additional_datastreams_permissions, strip read-only fields
 # that Fleet rejects on PUT (id, revision, audit fields, compiled outputs).
 curl -sk -u "$ES_USER:$ES_PASS" \
     -H "kbn-xsrf: true" \
@@ -215,8 +215,7 @@ curl -sk -u "$ES_USER:$ES_PASS" \
     -o full-policy.json
 
 jq '.item
-    | .enabled = true
-    | .inputs[] |= (.enabled = true | .streams[] |= (.enabled = true))
+    | .additional_datastreams_permissions = ["metrics-*-*", "traces-*-*"]
     | del(.id, .revision, .created_at, .created_by, .updated_at, .updated_by,
           .version, .spaceIds, .agents)' \
     full-policy.json > policy-update.json
@@ -233,16 +232,11 @@ jq -e '.item.id' put-result.json >/dev/null || {
     cat put-result.json >&2
     exit 1
 }
-echo "INFO: all streams enabled on package policy $policy_id"
+echo "INFO: additional_datastreams_permissions set on package policy $policy_id"
 
-# Diagnostic: show what lumberjack inputs Fleet compiled into the agent policy.
-# This confirms the integration is present and the listener config is intact.
-agent_policy_id_check=$(cat agent-policy-id.txt | tr -d '[:space:]')
-echo "INFO: compiled lumberjack inputs in agent policy after PUT:"
-curl -sk -u "$ES_USER:$ES_PASS" \
-    -H "kbn-xsrf: true" \
-    "$KB_URL/api/fleet/agent_policies/$agent_policy_id_check/full" \
-    | jq '[.item.inputs[]? | select(.type == "lumberjack") | {enabled, listen_address: .listen_address, streams: [.streams[]? | {data_stream, enabled}]}]'
+# Diagnostic: confirm the permissions were accepted.
+echo "INFO: additional_datastreams_permissions after PUT:"
+jq -r '.item.additional_datastreams_permissions[]?' put-result.json
 
 # Record the current agent policy revision so assert-api-key.sh can wait for the
 # agent to fully apply the update before we send events.

@@ -1,7 +1,7 @@
 format_version: 3.6.6
 name: agent_fwdr
 title: "Agent Forwarder"
-version: 0.5.0
+version: 0.6.0
 source:
   license: "Elastic-2.0"
 description: "Relay events from downstream Elastic Agents that cannot reach Elasticsearch directly, without deploying Logstash."

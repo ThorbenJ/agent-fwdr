@@ -1,4 +1,15 @@
 # newer versions go on top
+- version: "0.6.0"
+  changes:
+    - description: >-
+        Remove companion data streams forwarded_metrics and forwarded_traces. Cross-type write
+        permissions (metrics-*-*, traces-*-*) must now be added manually via
+        additional_datastreams_permissions on the package policy (Fleet UI: Advanced options →
+        "Add a reroute processor permission"). Upgrading an existing 0.5.0 policy: the companion
+        data streams are removed on upgrade, so metrics-*-* and traces-*-* grants are lost until
+        the patterns are added manually in Advanced options. Only logs-*-* remains automatic.
+      type: breaking-change
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/2
 - version: "0.5.0"
   changes:
     - description: >-
