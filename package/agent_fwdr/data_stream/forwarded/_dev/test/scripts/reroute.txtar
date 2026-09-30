@@ -117,12 +117,11 @@ exec sh wait-for-doc.sh traces-apm-default traces.json
 exec jq -e '[.hits.hits[]._source | select(.data_stream.type == "traces")] | length > 0' traces.json
 
 # -------------------------------------------------------------------------
-# Teardown
+# Teardown — minimal: stop the sender, leave the package and routed events in place.
 # -------------------------------------------------------------------------
 docker_down agent-fwdr-logs
 remove_package_policy -profile ${CONFIG_PROFILES}/${PROFILE} ${FWD_DS}
 uninstall_agent -profile ${CONFIG_PROFILES}/${PROFILE}
-remove_package -profile ${CONFIG_PROFILES}/${PROFILE}
 
 -- policy-config.yml --
 input: lumberjack
