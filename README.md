@@ -84,3 +84,9 @@ cd package/agent_fwdr
 elastic-package test pipeline -g      # update the pipeline golden file
 # review the diff, then commit everything
 ```
+
+## License
+
+The repository's own code — scripts, test harness, configuration — is licensed under the
+[Apache License 2.0](LICENSE). The Elastic integration package under `package/agent_fwdr/` is
+licensed under the [Elastic License 2.0](package/agent_fwdr/LICENSE.txt).
