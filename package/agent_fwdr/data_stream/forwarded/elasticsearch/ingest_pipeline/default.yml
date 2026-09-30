@@ -1,0 +1,131 @@
+---
+description: |
+  Unwrap Elastic Agent events received over the Lumberjack protocol.
+
+  The lumberjack input nests the entire received event under `lumberjack`, and the receiving agent
+  then stamps its own identity at the document root. This pipeline inverts that: the forwarder's own
+  fields are demoted to `fleet.forwarder.*` and the payload is promoted back to the root, so the
+  document looks exactly as it would have had the downstream agent sent it directly.
+
+  Fleet appends the reroute processors generated from routing_rules.yml to the end of this pipeline,
+  so by the time routing is evaluated `data_stream.*` already holds the forwarded values.
+processors:
+  - script:
+      lang: painless
+      tag: park_forwarder_fields
+      description: Demote every root field the forwarder itself added to fleet.forwarder.*
+      if: ctx.lumberjack instanceof Map
+      source: |
+        Map parked = [:];
+        for (String k : new ArrayList(ctx.keySet())) {
+          if (k.startsWith('_') || k == 'lumberjack') {
+            continue;
+          }
+          if (k == '@timestamp') {
+            parked['received_at'] = ctx.remove(k);
+          } else {
+            parked[k] = ctx.remove(k);
+          }
+        }
+        ctx['fleet'] = ['forwarder': parked];
+
+  - script:
+      lang: painless
+      tag: promote_lumberjack
+      description: >-
+        Promote every lumberjack.* key to the document root. After this processor the lumberjack key
+        is gone and no lumberjack.* fields remain in the document.
+      if: ctx.lumberjack instanceof Map
+      source: |
+        Map lj = (Map) ctx.remove('lumberjack');
+        Map fwd = (Map) ((Map) ctx.remove('fleet')).get('forwarder');
+
+        for (entry in lj.entrySet()) {
+          String k = entry.getKey();
+          if (k == '@metadata') {
+            fwd['metadata'] = entry.getValue();
+          } else {
+            ctx[k] = entry.getValue();
+          }
+        }
+
+        // Re-attach breadcrumb, preserving any prior-hop forwarder info under upstream.
+        if (ctx['fleet'] instanceof Map) {
+          Map existing = (Map) ctx['fleet'];
+          if (existing.containsKey('forwarder')) {
+            fwd['upstream'] = existing.remove('forwarder');
+          }
+          existing.put('forwarder', fwd);
+        } else {
+          ctx['fleet'] = ['forwarder': fwd];
+        }
+
+  - set:
+      field: '@timestamp'
+      tag: restore_receipt_timestamp
+      copy_from: fleet.forwarder.received_at
+      description: Fall back to receipt time if the forwarded event carried no timestamp
+      if: ctx['@timestamp'] == null
+
+  - date:
+      field: '@timestamp'
+      tag: normalise_timestamp
+      target_field: '@timestamp'
+      formats:
+        - ISO8601
+      ignore_failure: true
+
+  - set:
+      field: event.ingested
+      tag: set_event_ingested
+      value: '{{{_ingest.timestamp}}}'
+      ignore_empty_value: true
+
+  # Payloads without data_stream.* (e.g. from non-Fleet shippers) stay in this data stream.
+  - set:
+      field: data_stream.type
+      tag: default_ds_type
+      value: logs
+      if: ctx.data_stream?.type == null
+      ignore_empty_value: true
+
+  - set:
+      field: data_stream.dataset
+      tag: default_ds_dataset
+      value: agent_fwdr.forwarded
+      if: ctx.data_stream?.dataset == null
+      ignore_empty_value: true
+
+  - set:
+      field: data_stream.namespace
+      tag: default_ds_namespace
+      if: ctx.data_stream?.namespace == null
+      copy_from: fleet.forwarder.data_stream.namespace
+      ignore_empty_value: true
+
+  - set:
+      field: data_stream.namespace
+      tag: fallback_ds_namespace
+      value: default
+      if: ctx.data_stream?.namespace == null
+      ignore_empty_value: true
+
+  - set:
+      field: event.dataset
+      tag: sync_event_dataset
+      copy_from: data_stream.dataset
+      if: ctx.event?.dataset == null
+      ignore_empty_value: true
+
+on_failure:
+  - append:
+      field: error.message
+      tag: append_error_message
+      value: >-
+        Processor {{{_ingest.on_failure_processor_type}}} with tag
+        {{{_ingest.on_failure_processor_tag}}} in pipeline {{{_ingest.pipeline}}} failed with
+        message: {{{_ingest.on_failure_message}}}
+  - set:
+      field: event.kind
+      tag: set_pipeline_error
+      value: pipeline_error

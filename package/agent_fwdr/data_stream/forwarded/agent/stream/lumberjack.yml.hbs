@@ -1,0 +1,36 @@
+listen_address: "{{listen_address}}:{{listen_port}}"
+versions:
+{{#each versions as |v|}}
+  - {{v}}
+{{/each}}
+{{#if max_connections}}
+max_connections: {{max_connections}}
+{{/if}}
+{{#if keepalive}}
+keepalive: {{keepalive}}
+{{/if}}
+{{#if ssl_certificate}}
+ssl:
+  certificate: "{{ssl_certificate}}"
+  key: "{{ssl_key}}"
+  {{#if ssl_certificate_authorities}}
+  certificate_authorities:
+    - "{{ssl_certificate_authorities}}"
+  {{/if}}
+{{ssl_advanced}}
+{{/if}}
+{{#if tags}}
+tags:
+{{#each tags as |tag|}}
+  - {{tag}}
+{{/each}}
+{{/if}}
+# The forwarder's own host metadata is not useful on a relayed document, and libbeat re-adds
+# host.name after any processor runs, so suppress it at the source instead.
+publisher_pipeline.disable_host: true
+{{#if processors}}
+processors:
+{{processors}}
+{{/if}}
+
+{{custom}}

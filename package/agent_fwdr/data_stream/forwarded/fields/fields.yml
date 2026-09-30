@@ -1,0 +1,88 @@
+# Breadcrumb describing the forwarder that relayed the event, and the connection it arrived on.
+# Everything the forwarding agent stamped at the document root is demoted into this namespace so it
+# stops masquerading as the event's real origin.
+#
+# The set is enumerable: it is exactly what an Elastic Agent adds to an event, so it is declared
+# field by field rather than flattened. The one exception is metadata, which mirrors the upstream
+# beat's '@metadata' and is open-ended.
+#
+# After rerouting these fields land in other integrations' data streams. They dynamic-map
+# consistently because all sub-field values have the same types across every destination index.
+- name: fleet.forwarder
+  type: group
+  fields:
+    - name: received_at
+      type: date
+      description: Time at which the forwarder received the event. Useful for measuring relay lag.
+    - name: agent.id
+      type: keyword
+      description: Unique identifier of the forwarding Elastic Agent.
+    - name: agent.name
+      type: keyword
+      description: Name of the forwarding Elastic Agent, typically its hostname.
+    - name: agent.type
+      type: keyword
+      description: Beat type underlying the forwarding Elastic Agent.
+    - name: agent.version
+      type: keyword
+      description: Version of the forwarding Elastic Agent.
+    - name: agent.ephemeral_id
+      type: keyword
+      description: Ephemeral identifier of the forwarding Elastic Agent process.
+    - name: elastic_agent.id
+      type: keyword
+      description: Unique identifier of the forwarding Elastic Agent.
+    - name: elastic_agent.version
+      type: keyword
+      description: Version of the forwarding Elastic Agent.
+    - name: elastic_agent.snapshot
+      type: boolean
+      description: Whether the forwarding Elastic Agent is a snapshot build.
+    - name: host.name
+      type: keyword
+      description: >-
+        Hostname of the machine running the forwarder. Normally absent, because the input sets
+        publisher_pipeline.disable_host to stop libbeat adding it.
+    - name: ecs.version
+      type: keyword
+      description: ECS version the forwarder itself was stamping on events.
+    - name: event.dataset
+      type: keyword
+      description: Event dataset the forwarder itself was writing to.
+    - name: input.type
+      type: keyword
+      description: Input type on the forwarder. Always 'lumberjack'.
+    - name: tags
+      type: keyword
+      description: >-
+        Tags configured on the forwarder's listener, kept apart from the forwarded event's own tags.
+    - name: source.address
+      type: keyword
+      description: Address and port the forwarded connection originated from.
+    - name: tls.client.subject
+      type: keyword
+      description: >-
+        Common name of the client certificate presented by the downstream agent, when mutual TLS is
+        enabled. This is the only trustworthy per-sender discriminator.
+    - name: data_stream.type
+      type: keyword
+      description: Data stream type the forwarder itself was writing to.
+    - name: data_stream.dataset
+      type: keyword
+      description: Data stream dataset the forwarder itself was writing to.
+    - name: data_stream.namespace
+      type: keyword
+      description: Data stream namespace the forwarder itself was writing to.
+    - name: upstream
+      type: flattened
+      description: >-
+        When an event has passed through more than one forwarder, the previous hop's
+        fleet.forwarder breadcrumb is moved here before the current hop's breadcrumb is written.
+        Flattened because the structure mirrors fleet.forwarder and can chain to arbitrary depth.
+    - name: metadata
+      type: flattened
+      description: >-
+        The upstream beat's '@metadata', carrying its input_id, stream_id and intended document _id.
+        Preserved for correlation. Note that _id is not reapplied as this document's ID, so
+        integrations relying on it for deduplication lose that property across the hop. Flattened
+        because its contents vary by sender and beat version.

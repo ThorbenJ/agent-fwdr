@@ -1,0 +1,421 @@
+# reroute.txtar
+#
+# Self-contained integration test for the agent_fwdr forwarded data stream.
+# Stands up its own Fleet agent, creates an all-streams package policy, confirms
+# the output API key carries the correct grants, sends the 4 canonical events,
+# and asserts each arrives at its target data stream.
+#
+# Prerequisite: elastic-package stack up -d
+# Run: cd package/agent_fwdr && elastic-package test script -v --verbose-scripts
+#
+# What each assertion proves:
+#   logs-agent_fwdr.forwarded-<ns>  -- probe stayed (reroute correctly declined)
+#   logs-system.syslog-default      -- same-type reroute; grok-derived fields present
+#   metrics-system.cpu-default      -- cross-type logs→metrics reroute
+#   traces-apm-default              -- cross-type logs→traces reroute
+#
+# The agent id written to agent-id.txt by assert-api-key.sh is used in
+# wait-for-doc.sh to filter ES results to this run's documents only, replacing
+# the heuristic event.ingested recency window used before. Each EP test run gets
+# a distinct Fleet agent id, so documents from previous runs cannot cause a false pass.
+#
+# For the elastic-package team — four gaps this test works around, each a candidate
+# upstream feature:
+#
+#   (a) add_package_policy enables exactly one data stream per policy
+#       (internal/kibana/packagepolicy.go buildStreamsForInput). No flag exists to
+#       enable siblings. Workaround: exec curl GET/PUT to enable all streams after
+#       the policy is created.
+#
+#   (b) No primitive to inspect the agent's output API key permissions.
+#       Workaround: exec curl GET /_security/api_key, polling until all three
+#       index grants (logs-*-*, metrics-*-*, traces-*-*) are present.
+#
+#   (c) get_docs cannot filter by query — it waits only on raw hit counts,
+#       which is unusable against shared target indices on a reused stack
+#       (returns the count from prior runs immediately).
+#       Workaround: exec curl with a _search term filter on fleet.forwarder.agent.id.
+#
+#   (d) install_package_from_registry requires a literal version; there is no
+#       "latest" lookup and no way to capture command output into a script variable.
+#       Workaround: exec curl to resolve .item.latestVersion via the EPM API and
+#       install with {"force":true}.
+
+[!external_stack] skip 'requires a running stack -- elastic-package stack up -d'
+[!exec:jq]   skip 'requires jq on PATH'
+[!exec:curl] skip 'requires curl on PATH'
+
+# Capture stack credentials (use_stack prints JSON to stdout; no env vars are set).
+use_stack -profile ${CONFIG_PROFILES}/${PROFILE}
+cp stdout stack-config.json
+
+# Install downstream integrations that own the reroute target data streams.
+# system provides logs-system.syslog-default and metrics-system.cpu-default.
+# apm provides traces-apm-default.
+# See gap (d) above for why this is an exec curl rather than install_package_from_registry.
+exec sh install-downstream.sh
+
+# Bring up the local package and deploy a test agent.
+add_package -profile ${CONFIG_PROFILES}/${PROFILE}
+install_agent -profile ${CONFIG_PROFILES}/${PROFILE} -container_name AGENT_CONTAINER -network_name AGENT_NETWORK -timeout 5m
+
+# Create a package policy for the forwarded data stream (lumberjack input, port 5044).
+# This enables only the forwarded data stream — forwarded_metrics and forwarded_traces
+# are disabled by add_package_policy. See gap (a) above.
+add_package_policy -profile ${CONFIG_PROFILES}/${PROFILE} -timeout 2m policy-config.yml FWD_DS
+
+# Enable all three data streams (forwarded, forwarded_metrics, forwarded_traces) on the
+# package policy so Fleet grants the agent logs-*-*, metrics-*-*, and traces-*-* in its
+# output API key. See gaps (a) and (b) above.
+exec sh enable-all-streams.sh
+
+# Poll until all three index grants are present in the output API key.
+# This also acts as a synchronisation barrier — events must not be sent until the agent
+# has applied the widened policy and been issued a new API key.
+# Writes agent-id.txt for use in wait-for-doc.sh. See gap (b) above.
+exec sh assert-api-key.sh
+
+# Copy the committed docker deploy assets into $WORK and stamp @timestamp to now.
+# docker_up reads $WORK/<dir>/docker-compose.yml; we reuse the committed assets.
+# stamp-fixture.sh modifies the $WORK copy only — the source tree is never mutated.
+mkdir agent-fwdr-logs
+exec cp -R ${PACKAGE_ROOT}/_dev/deploy/docker/. agent-fwdr-logs/
+exec sh stamp-fixture.sh
+
+# Send the 4 canonical events over lumberjack.
+docker_up -profile ${CONFIG_PROFILES}/${PROFILE} -network ${AGENT_NETWORK} agent-fwdr-logs
+docker_signal agent-fwdr-logs SIGHUP
+docker_wait_exit -timeout 5m agent-fwdr-logs
+
+# -------------------------------------------------------------------------
+# Assertions
+# -------------------------------------------------------------------------
+
+# 1. Probe: must stay in the test-run data stream (reroute correctly declined).
+#    get_docs handles this natively because the data stream is scoped to this run's
+#    namespace (it is not a shared index). See gap (c) for why external targets need
+#    a different approach.
+get_docs -profile ${CONFIG_PROFILES}/${PROFILE} -want 1 -timeout 2m ${FWD_DS}
+cp stdout probe.json
+exec jq -e '[.hits.hits[]._source | select(.tags[]? == "system-test-probe")] | length > 0' probe.json
+
+# 2. Syslog: same-type reroute (logs→logs).
+#    Evidence: process.name == "sshd", process.pid == 4321, host.hostname == "myserver".
+#    All three are grok-derived — the payload only carried host.name (not host.hostname)
+#    and no process.* fields. Only the system.syslog ingest pipeline can produce them.
+exec sh wait-for-doc.sh logs-system.syslog-default syslog.json
+exec jq -e '[.hits.hits[]._source | select(.process.name == "sshd") | select(.process.pid == 4321) | select(.host.hostname == "myserver")] | length > 0' syslog.json
+
+# 3. CPU metric: cross-type reroute (logs→metrics).
+#    Evidence: data_stream.type == "metrics".
+exec sh wait-for-doc.sh metrics-system.cpu-default cpu.json
+exec jq -e '[.hits.hits[]._source | select(.data_stream.type == "metrics")] | length > 0' cpu.json
+
+# 4. APM trace: cross-type reroute (logs→traces).
+#    Evidence: data_stream.type == "traces".
+exec sh wait-for-doc.sh traces-apm-default traces.json
+exec jq -e '[.hits.hits[]._source | select(.data_stream.type == "traces")] | length > 0' traces.json
+
+# -------------------------------------------------------------------------
+# Teardown
+# -------------------------------------------------------------------------
+docker_down agent-fwdr-logs
+remove_package_policy -profile ${CONFIG_PROFILES}/${PROFILE} ${FWD_DS}
+uninstall_agent -profile ${CONFIG_PROFILES}/${PROFILE}
+remove_package -profile ${CONFIG_PROFILES}/${PROFILE}
+
+-- policy-config.yml --
+input: lumberjack
+data_stream:
+  vars:
+    listen_address: '0.0.0.0'
+    listen_port: 5044
+
+-- install-downstream.sh --
+#!/bin/sh
+# Install system and apm integrations from the Elastic Package Registry.
+# These own the reroute target data streams and must be installed before events land.
+# See reroute.txtar gap (d): install_package_from_registry requires a literal version.
+set -eu
+
+KB_URL=$(jq -r .kibana_host stack-config.json)
+ES_USER=$(jq -r .elasticsearch_username stack-config.json)
+ES_PASS=$(jq -r .elasticsearch_password stack-config.json)
+
+install_integration() {
+    name=$1
+    version=$(curl -sk -u "$ES_USER:$ES_PASS" \
+        -H "kbn-xsrf: true" \
+        "$KB_URL/api/fleet/epm/packages/$name" \
+        | jq -re '.item.latestVersion') || {
+        echo "ERROR: could not resolve latest version of $name" >&2
+        exit 1
+    }
+    result=$(curl -sk -u "$ES_USER:$ES_PASS" \
+        -X POST \
+        -H "kbn-xsrf: true" \
+        -H "Content-Type: application/json" \
+        -d '{"force":true}' \
+        "$KB_URL/api/fleet/epm/packages/$name/$version")
+    echo "$result" | jq -e '._meta' >/dev/null || {
+        echo "ERROR: Fleet EPM rejected install of $name $version: $(echo "$result" | jq -rc '.message // .')" >&2
+        exit 1
+    }
+    echo "INFO: installed $name $version"
+}
+
+install_integration system
+install_integration apm
+
+-- enable-all-streams.sh --
+#!/bin/sh
+# Enable all data streams on the agent_fwdr package policy so Fleet grants
+# logs-*-*, metrics-*-*, and traces-*-* in the output API key.
+# See reroute.txtar gap (a).
+set -eu
+
+KB_URL=$(jq -r .kibana_host stack-config.json)
+ES_USER=$(jq -r .elasticsearch_username stack-config.json)
+ES_PASS=$(jq -r .elasticsearch_password stack-config.json)
+
+# Find the agent_fwdr package policy created by add_package_policy.
+# Save to a file first; avoids variable-capture of large JSON with embedded YAML.
+http_code=$(curl -sk -u "$ES_USER:$ES_PASS" \
+    -H "kbn-xsrf: true" \
+    -o policies.json \
+    -w '%{http_code}' \
+    "$KB_URL/api/fleet/package_policies?perPage=100")
+if [ "$http_code" != "200" ]; then
+    echo "ERROR: GET package_policies returned HTTP $http_code" >&2
+    cat policies.json >&2
+    exit 1
+fi
+policy_id=$(jq -re '[.items[] | select(.package.name == "agent_fwdr")][0].id' policies.json) || {
+    echo "ERROR: no agent_fwdr package policy found in:" >&2
+    jq '[.items[] | {id,name,pkg:.package.name}]' policies.json >&2
+    exit 1
+}
+echo "$policy_id" > package-policy-id.txt
+
+# Save the agent policy id so assert-api-key.sh can find the enrolled agent.
+jq -re '[.items[] | select(.package.name == "agent_fwdr")][0]
+    | (.policy_ids // [.policy_id])[0]' policies.json \
+    > agent-policy-id.txt || {
+    echo "ERROR: could not extract agent policy id from package policy" >&2
+    exit 1
+}
+
+echo "INFO: found package policy $policy_id"
+
+# Fetch the full policy, enable all inputs and streams, strip read-only fields
+# that Fleet rejects on PUT (id, revision, audit fields, compiled outputs).
+curl -sk -u "$ES_USER:$ES_PASS" \
+    -H "kbn-xsrf: true" \
+    "$KB_URL/api/fleet/package_policies/$policy_id" \
+    -o full-policy.json
+
+jq '.item
+    | .enabled = true
+    | .inputs[] |= (.enabled = true | .streams[] |= (.enabled = true))
+    | del(.id, .revision, .created_at, .created_by, .updated_at, .updated_by,
+          .version, .spaceIds, .agents)' \
+    full-policy.json > policy-update.json
+
+curl -sk -u "$ES_USER:$ES_PASS" \
+    -X PUT \
+    -H "kbn-xsrf: true" \
+    -H "Content-Type: application/json" \
+    --data-binary @policy-update.json \
+    "$KB_URL/api/fleet/package_policies/$policy_id" \
+    -o put-result.json
+jq -e '.item.id' put-result.json >/dev/null || {
+    echo "ERROR: PUT package policy failed: $(jq -rc '.message // .' put-result.json)" >&2
+    cat put-result.json >&2
+    exit 1
+}
+echo "INFO: all streams enabled on package policy $policy_id"
+
+# Diagnostic: show what lumberjack inputs Fleet compiled into the agent policy.
+# This confirms the integration is present and the listener config is intact.
+agent_policy_id_check=$(cat agent-policy-id.txt | tr -d '[:space:]')
+echo "INFO: compiled lumberjack inputs in agent policy after PUT:"
+curl -sk -u "$ES_USER:$ES_PASS" \
+    -H "kbn-xsrf: true" \
+    "$KB_URL/api/fleet/agent_policies/$agent_policy_id_check/full" \
+    | jq '[.item.inputs[]? | select(.type == "lumberjack") | {enabled, listen_address: .listen_address, streams: [.streams[]? | {data_stream, enabled}]}]'
+
+# Record the current agent policy revision so assert-api-key.sh can wait for the
+# agent to fully apply the update before we send events.
+agent_policy_id=$(cat agent-policy-id.txt | tr -d '[:space:]')
+curl -sk -u "$ES_USER:$ES_PASS" \
+    -H "kbn-xsrf: true" \
+    "$KB_URL/api/fleet/agent_policies/$agent_policy_id" \
+    | jq -re '.item.revision' > expected-policy-revision.txt
+echo "INFO: agent policy revision after PUT: $(cat expected-policy-revision.txt)"
+
+-- assert-api-key.sh --
+#!/bin/sh
+# Wait for the agent to apply the updated policy, then confirm the output API key
+# grants logs-*-*, metrics-*-*, traces-*-*. Writes agent-id.txt for wait-for-doc.sh.
+# See reroute.txtar gap (b).
+set -eu
+
+ES_URL=$(jq -r .elasticsearch_host stack-config.json)
+KB_URL=$(jq -r .kibana_host stack-config.json)
+ES_USER=$(jq -r .elasticsearch_username stack-config.json)
+ES_PASS=$(jq -r .elasticsearch_password stack-config.json)
+
+agent_policy_id=$(cat agent-policy-id.txt | tr -d '[:space:]')
+
+# Find the agent enrolled in the testing agent policy.
+# Fleet agents API returns .items (not .list).
+agent_id=$(curl -sk -u "$ES_USER:$ES_PASS" \
+    -H "kbn-xsrf: true" \
+    "$KB_URL/api/fleet/agents?perPage=100" \
+    | jq -re --arg pid "$agent_policy_id" \
+        '[.items[] | select(.policy_id == $pid) | .id][0]') || {
+    echo "ERROR: no agent enrolled in policy $agent_policy_id" >&2
+    exit 1
+}
+[ -n "$agent_id" ] || { echo "ERROR: agent id empty for policy $agent_policy_id" >&2; exit 1; }
+printf '%s' "$agent_id" > agent-id.txt
+echo "INFO: agent id = $agent_id"
+
+# Wait for the agent to apply the updated policy revision.
+# enable-all-streams.sh wrote the expected revision to expected-policy-revision.txt.
+# Policy revision match means the agent has finished reloading its inputs, so the
+# lumberjack listener is ready before we send events.
+expected_revision=$(cat expected-policy-revision.txt | tr -d '[:space:]')
+echo "INFO: waiting for agent to apply policy revision $expected_revision..."
+deadline_rev=$(( $(date +%s) + 120 ))
+while true; do
+    applied=$(curl -sk -u "$ES_USER:$ES_PASS" \
+        -H "kbn-xsrf: true" \
+        "$KB_URL/api/fleet/agents/$agent_id" \
+        | jq -re '.item.policy_revision_idx // .item.policy_revision // 0' 2>/dev/null || echo 0)
+    if [ "$applied" -ge "$expected_revision" ]; then
+        echo "INFO: agent applied policy revision $applied"
+        break
+    fi
+    now=$(date +%s)
+    if [ "$now" -ge "$deadline_rev" ]; then
+        echo "ERROR: agent policy revision not applied after 120s (got $applied, want $expected_revision)" >&2
+        exit 1
+    fi
+    sleep 5
+done
+
+# Poll until all three grants are present (or 180s timeout).
+# By this point the agent has applied the policy, so the key should already be updated.
+deadline=$(( $(date +%s) + 180 ))
+while true; do
+    grants=$(curl -sk -u "$ES_USER:$ES_PASS" \
+        "${ES_URL}/_security/api_key?active_only=true&name=${agent_id}:*" \
+        | jq -r '[.api_keys[]?.role_descriptors
+                    | to_entries[]?.value
+                    | .indices[]?.names[]?] | unique | .[]' 2>/dev/null || true)
+
+    has_logs=$(  echo "$grants" | grep -qF 'logs-*-*'    && echo 1 || echo 0)
+    has_metrics=$(echo "$grants" | grep -qF 'metrics-*-*' && echo 1 || echo 0)
+    has_traces=$( echo "$grants" | grep -qF 'traces-*-*'  && echo 1 || echo 0)
+
+    if [ "$has_logs" = 1 ] && [ "$has_metrics" = 1 ] && [ "$has_traces" = 1 ]; then
+        echo "INFO: API key grants confirmed: logs-*-*, metrics-*-*, traces-*-*"
+        exit 0
+    fi
+
+    now=$(date +%s)
+    if [ "$now" -ge "$deadline" ]; then
+        echo "ERROR: timed out waiting for API key grants after 180s" >&2
+        echo "  grants seen: $grants" >&2
+        exit 1
+    fi
+    sleep 5
+done
+
+-- stamp-fixture.sh --
+#!/bin/sh
+# Stamp @timestamp to now in the $WORK copy of the fixture (not the source tree).
+#
+# Three problems solved:
+#   1. TSDB write window: metrics-system.cpu-default uses index.mode=time_series.
+#      The write window is approximately now ± 2h. A committed past date is rejected.
+#   2. Syslog grok date: the system.syslog ingest pipeline groks the date from the
+#      message field and uses it as @timestamp. A past date leaves the document outside
+#      Kibana's default time range, invisible in Discover. (This caused a false "nothing
+#      arrived" diagnosis before.)
+#   3. Probe namespace: data_stream.namespace is a constant_keyword in the backing index
+#      whose value is set at index-creation time to the test-run namespace (extracted from
+#      $FWD_DS = logs-agent_fwdr.forwarded-<ns>). The master fixture carries namespace
+#      "default" because that is the correct value for a real probe event in production.
+#      But if the document's namespace mismatches the index's constant value, ES rejects
+#      the document silently. Stamping the probe's namespace to the test-run namespace
+#      ensures it lands in the test data stream and get_docs can find it.
+#
+# The committed files in the source tree are NEVER modified by this script.
+set -eu
+
+NDJSON=agent-fwdr-logs/sample_logs/forwarded-logs.ndjson
+NOW_TS=$(jq -rn 'now | todateiso8601')
+SYSLOG_DATE=$(jq -rn 'now | gmtime | strftime("%b %e %H:%M:%S")')
+
+# Extract test-run namespace from FWD_DS (e.g. "logs-agent_fwdr.forwarded-35059" → "35059").
+TEST_NS=$(echo "$FWD_DS" | sed 's/.*-//')
+echo "INFO: test-run namespace = $TEST_NS (from FWD_DS=$FWD_DS)"
+
+jq -c --arg ts "$NOW_TS" --arg sdate "$SYSLOG_DATE" --arg ns "$TEST_NS" '
+    .["@timestamp"] = $ts
+    | if .data_stream.dataset == "system.syslog" then
+        .message |= gsub("Sep 24 10:15:01"; $sdate)
+      else . end
+    | if .data_stream.dataset == "agent_fwdr.forwarded" then
+        .data_stream.namespace = $ns
+      else . end
+' "$NDJSON" > "${NDJSON}.tmp"
+mv "${NDJSON}.tmp" "$NDJSON"
+echo "INFO: stamped timestamps to $NOW_TS, probe namespace to $TEST_NS in $NDJSON"
+
+-- wait-for-doc.sh --
+#!/bin/sh
+# Usage: wait-for-doc.sh <index> <output-file>
+#
+# Polls ES until at least one document matching this run's fleet.forwarder.agent.id
+# is present in <index>, then writes the full _search response to <output-file>.
+# Times out after 120s.
+#
+# Filtering on fleet.forwarder.agent.id (written by park_forwarder_fields into every
+# rerouted document) is exact: each EP test run gets a distinct Fleet agent id, so
+# documents from previous runs on a shared stack cannot produce a false pass.
+# See reroute.txtar gap (c) for why get_docs cannot be used for these targets.
+set -eu
+
+INDEX=$1
+OUTFILE=$2
+
+ES_URL=$(jq -r .elasticsearch_host stack-config.json)
+ES_USER=$(jq -r .elasticsearch_username stack-config.json)
+ES_PASS=$(jq -r .elasticsearch_password stack-config.json)
+AGENT_ID=$(cat agent-id.txt)
+
+deadline=$(( $(date +%s) + 120 ))
+while true; do
+    response=$(curl -sk -u "$ES_USER:$ES_PASS" \
+        -H "Content-Type: application/json" \
+        "${ES_URL}/${INDEX}/_search" \
+        -d "{\"query\":{\"term\":{\"fleet.forwarder.agent.id\":\"${AGENT_ID}\"}},\"size\":10}" \
+        2>/dev/null) || response='{"hits":{"total":{"value":0},"hits":[]}}'
+
+    count=$(echo "$response" | jq -r '.hits.total.value // 0')
+    if [ "$count" -gt 0 ]; then
+        echo "$response" > "$OUTFILE"
+        echo "INFO: found $count doc(s) in $INDEX for agent $AGENT_ID"
+        exit 0
+    fi
+
+    now=$(date +%s)
+    if [ "$now" -ge "$deadline" ]; then
+        echo "ERROR: timed out waiting for documents in $INDEX (agent=$AGENT_ID)" >&2
+        exit 1
+    fi
+    sleep 5
+done

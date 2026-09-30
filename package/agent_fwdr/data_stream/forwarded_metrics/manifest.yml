@@ -1,0 +1,20 @@
+title: Forwarded events — metrics write permission
+type: metrics
+dataset: agent_fwdr.forwarded_metrics
+# This data stream is disabled and receives no traffic directly. Its sole purpose is to grant
+# the forwarder agent write access to metrics-*-*. The forwarded data stream (type: logs) handles
+# all incoming lumberjack connections; the ingest pipeline then reroutes metrics events to their
+# original metrics-* data streams via the reroute processor. Fleet derives API key permissions
+# from every data stream in the policy, so including this grants metrics-*-* access without
+# requiring a second listener.
+elasticsearch:
+  dynamic_dataset: true
+  dynamic_namespace: true
+streams:
+  - input: lumberjack
+    title: Forwarded metrics (permission grant)
+    description: >-
+      Grants the forwarder agent write access to metrics-*-* so the ingest pipeline can reroute
+      metric events to their original data streams. No listener is started; all traffic arrives
+      on the main forwarded input.
+    template_path: lumberjack.yml.hbs

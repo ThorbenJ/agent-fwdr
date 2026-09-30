@@ -1,0 +1,329 @@
+{
+    "expected": [
+        {
+            "@timestamp": "2026-09-24T10:15:01.006Z",
+            "agent": {
+                "id": "a1111111-1111-1111-1111-111111111111",
+                "name": "syslog-agent-01",
+                "type": "filebeat",
+                "version": "9.1.0"
+            },
+            "data_stream": {
+                "dataset": "system.syslog",
+                "namespace": "default",
+                "type": "logs"
+            },
+            "ecs": {
+                "version": "8.17.0"
+            },
+            "elastic_agent": {
+                "id": "a1111111-1111-1111-1111-111111111111",
+                "snapshot": false,
+                "version": "9.1.0"
+            },
+            "event": {
+                "dataset": "system.syslog",
+                "ingested": "2026-09-29T11:24:29.743125805Z"
+            },
+            "fleet": {
+                "forwarder": {
+                    "agent": {
+                        "ephemeral_id": "aaaaaaaa-0000-0000-0000-00000000fwdr",
+                        "id": "f0000000-0000-0000-0000-00000000fwdr",
+                        "name": "forwarder-01",
+                        "type": "filebeat",
+                        "version": "9.1.0"
+                    },
+                    "data_stream": {
+                        "dataset": "agent_fwdr.forwarded",
+                        "namespace": "default",
+                        "type": "logs"
+                    },
+                    "ecs": {
+                        "version": "8.17.0"
+                    },
+                    "elastic_agent": {
+                        "id": "f0000000-0000-0000-0000-00000000fwdr",
+                        "snapshot": false,
+                        "version": "9.1.0"
+                    },
+                    "event": {
+                        "dataset": "agent_fwdr.forwarded"
+                    },
+                    "input": {
+                        "type": "lumberjack"
+                    },
+                    "received_at": "2026-09-24T10:15:04.001Z",
+                    "source": {
+                        "address": "10.0.0.7:51234"
+                    },
+                    "tags": [
+                        "forwarded"
+                    ]
+                }
+            },
+            "host": {
+                "name": "syslog-agent-01"
+            },
+            "input": {
+                "type": "log"
+            },
+            "message": "Sep 24 10:15:01 myserver sshd[4321]: Accepted publickey for deploy from 10.42.0.9 port 54321 ssh2: RSA SHA256:abcdef1234567890"
+        },
+        {
+            "@timestamp": "2026-09-24T10:15:02.118Z",
+            "agent": {
+                "id": "a3333333-3333-3333-3333-333333333333",
+                "name": "metrics-agent-01",
+                "type": "metricbeat",
+                "version": "9.1.0"
+            },
+            "data_stream": {
+                "dataset": "system.cpu",
+                "namespace": "default",
+                "type": "metrics"
+            },
+            "ecs": {
+                "version": "8.17.0"
+            },
+            "elastic_agent": {
+                "id": "a3333333-3333-3333-3333-333333333333",
+                "snapshot": false,
+                "version": "9.1.0"
+            },
+            "event": {
+                "dataset": "system.cpu",
+                "ingested": "2026-09-29T11:24:29.743151304Z"
+            },
+            "fleet": {
+                "forwarder": {
+                    "agent": {
+                        "ephemeral_id": "aaaaaaaa-0000-0000-0000-00000000fwdr",
+                        "id": "f0000000-0000-0000-0000-00000000fwdr",
+                        "name": "forwarder-01",
+                        "type": "filebeat",
+                        "version": "9.1.0"
+                    },
+                    "data_stream": {
+                        "dataset": "agent_fwdr.forwarded",
+                        "namespace": "default",
+                        "type": "logs"
+                    },
+                    "ecs": {
+                        "version": "8.17.0"
+                    },
+                    "elastic_agent": {
+                        "id": "f0000000-0000-0000-0000-00000000fwdr",
+                        "snapshot": false,
+                        "version": "9.1.0"
+                    },
+                    "event": {
+                        "dataset": "agent_fwdr.forwarded"
+                    },
+                    "input": {
+                        "type": "lumberjack"
+                    },
+                    "received_at": "2026-09-24T10:15:04.002Z",
+                    "source": {
+                        "address": "10.0.0.8:51240"
+                    },
+                    "tags": [
+                        "forwarded"
+                    ]
+                }
+            },
+            "host": {
+                "name": "metrics-agent-01"
+            }
+        },
+        {
+            "@timestamp": "2026-09-24T10:15:03.200Z",
+            "agent": {
+                "id": "a4444444-4444-4444-4444-444444444444",
+                "name": "apm-agent-01",
+                "type": "go",
+                "version": "1.14.0"
+            },
+            "data_stream": {
+                "dataset": "apm",
+                "namespace": "default",
+                "type": "traces"
+            },
+            "ecs": {
+                "version": "8.17.0"
+            },
+            "event": {
+                "dataset": "apm",
+                "ingested": "2026-09-29T11:24:29.743153262Z"
+            },
+            "fleet": {
+                "forwarder": {
+                    "agent": {
+                        "ephemeral_id": "aaaaaaaa-0000-0000-0000-00000000fwdr",
+                        "id": "f0000000-0000-0000-0000-00000000fwdr",
+                        "name": "forwarder-01",
+                        "type": "filebeat",
+                        "version": "9.1.0"
+                    },
+                    "data_stream": {
+                        "dataset": "agent_fwdr.forwarded",
+                        "namespace": "default",
+                        "type": "logs"
+                    },
+                    "ecs": {
+                        "version": "8.17.0"
+                    },
+                    "elastic_agent": {
+                        "id": "f0000000-0000-0000-0000-00000000fwdr",
+                        "snapshot": false,
+                        "version": "9.1.0"
+                    },
+                    "event": {
+                        "dataset": "agent_fwdr.forwarded"
+                    },
+                    "input": {
+                        "type": "lumberjack"
+                    },
+                    "received_at": "2026-09-24T10:15:04.003Z",
+                    "source": {
+                        "address": "10.0.0.9:55001"
+                    },
+                    "tags": [
+                        "forwarded"
+                    ]
+                }
+            },
+            "service": {
+                "environment": "production",
+                "name": "checkout"
+            },
+            "trace": {
+                "id": "trace123abc456def"
+            },
+            "transaction": {
+                "id": "txn001abc"
+            }
+        },
+        {
+            "@timestamp": "2026-09-24T10:15:04.000Z",
+            "agent": {
+                "id": "a1111111-1111-1111-1111-111111111111",
+                "name": "syslog-agent-01",
+                "type": "filebeat",
+                "version": "9.1.0"
+            },
+            "data_stream": {
+                "dataset": "agent_fwdr.forwarded",
+                "namespace": "default",
+                "type": "logs"
+            },
+            "ecs": {
+                "version": "8.17.0"
+            },
+            "event": {
+                "dataset": "agent_fwdr.forwarded",
+                "ingested": "2026-09-29T11:24:29.743155054Z"
+            },
+            "fleet": {
+                "forwarder": {
+                    "agent": {
+                        "ephemeral_id": "aaaaaaaa-0000-0000-0000-00000000fwdr",
+                        "id": "f0000000-0000-0000-0000-00000000fwdr",
+                        "name": "forwarder-01",
+                        "type": "filebeat",
+                        "version": "9.1.0"
+                    },
+                    "data_stream": {
+                        "dataset": "agent_fwdr.forwarded",
+                        "namespace": "default",
+                        "type": "logs"
+                    },
+                    "ecs": {
+                        "version": "8.17.0"
+                    },
+                    "elastic_agent": {
+                        "id": "f0000000-0000-0000-0000-00000000fwdr",
+                        "snapshot": false,
+                        "version": "9.1.0"
+                    },
+                    "event": {
+                        "dataset": "agent_fwdr.forwarded"
+                    },
+                    "input": {
+                        "type": "lumberjack"
+                    },
+                    "received_at": "2026-09-24T10:15:04.004Z",
+                    "source": {
+                        "address": "10.0.0.7:51235"
+                    },
+                    "tags": [
+                        "forwarded"
+                    ]
+                }
+            },
+            "input": {
+                "type": "log"
+            },
+            "message": "elastic-package system-test probe — this event is intentionally routed to agent_fwdr.forwarded so the test framework can confirm at least one document arrived",
+            "tags": [
+                "system-test-probe"
+            ]
+        },
+        {
+            "@timestamp": "2026-09-24T10:15:07.800Z",
+            "data_stream": {
+                "dataset": "nginx.access",
+                "namespace": "default",
+                "type": "logs"
+            },
+            "event": {
+                "dataset": "nginx.access",
+                "ingested": "2026-09-29T11:24:29.743156595Z"
+            },
+            "fleet": {
+                "forwarder": {
+                    "agent": {
+                        "id": "f0000000-0000-0000-0000-00000000fwdr",
+                        "name": "forwarder-01",
+                        "type": "filebeat",
+                        "version": "9.1.0"
+                    },
+                    "data_stream": {
+                        "dataset": "agent_fwdr.forwarded",
+                        "namespace": "default",
+                        "type": "logs"
+                    },
+                    "event": {
+                        "dataset": "agent_fwdr.forwarded"
+                    },
+                    "input": {
+                        "type": "lumberjack"
+                    },
+                    "received_at": "2026-09-24T10:15:08.100Z",
+                    "source": {
+                        "address": "10.0.0.11:55100"
+                    },
+                    "upstream": {
+                        "agent": {
+                            "id": "hop1-agent-id",
+                            "name": "hop1-forwarder"
+                        },
+                        "data_stream": {
+                            "dataset": "agent_fwdr.forwarded",
+                            "namespace": "default",
+                            "type": "logs"
+                        },
+                        "input": {
+                            "type": "lumberjack"
+                        },
+                        "received_at": "2026-09-24T10:15:07.600Z",
+                        "source": {
+                            "address": "192.168.1.10:44000"
+                        }
+                    }
+                }
+            },
+            "message": "chained from hop1"
+        }
+    ]
+}

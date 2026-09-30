@@ -1,0 +1,29 @@
+version: '2.3'
+services:
+  # Stands in for a downstream Elastic Agent's Logstash output, sending
+  # all four canonical test events over the Lumberjack protocol to the forwarder.
+  #
+  # Events in the file:
+  #   1. syslog      → rerouted to logs-system.syslog-default
+  #   2. system.cpu  → rerouted to metrics-system.cpu-default  (cross-type)
+  #   3. apm         → rerouted to traces-apm-default          (cross-type)
+  #   4. probe       → stays in logs-agent_fwdr.forwarded-<ns>
+  #      (data_stream.dataset=agent_fwdr.forwarded, satisfies assert.hit_count: 1)
+  #
+  # The script test (reroute.txtar) stamps @timestamp to now in its $WORK copy
+  # before sending so TSDB-backed indices accept the metrics event. The committed
+  # file keeps its readable static dates. The system test sends events with the
+  # static dates; the cpu event may be rejected by TSDB (outside the write window)
+  # but that rejection does not affect the system test's hit_count assertion on
+  # the probe.
+  agent-fwdr-logs:
+    image: docker.elastic.co/observability/stream:v0.18.0
+    volumes:
+      - ./sample_logs:/sample_logs:ro
+    environment:
+      - STREAM_PROTOCOL=lumberjack
+      - STREAM_LUMBERJACK_PARSE_JSON=true
+      - STREAM_ADDR=tcp://elastic-agent:5044
+      - STREAM_DELAY=5s
+      - STREAM_START_SIGNAL=SIGHUP
+    command: log /sample_logs/forwarded-logs.ndjson

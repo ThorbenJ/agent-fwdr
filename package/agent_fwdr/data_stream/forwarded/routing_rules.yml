@@ -1,0 +1,13 @@
+- source_dataset: agent_fwdr.forwarded
+  rules:
+    # Send the unwrapped document on to the data stream it was originally destined for. Fleet
+    # compiles this into a reroute processor appended to the end of the default pipeline.
+    # data_stream.type is pre-set from the payload before reroute runs, so cross-type routing
+    # (e.g. metrics or traces arriving on this listener) works correctly.
+    - target_dataset: '{{{data_stream.dataset}}}'
+      namespace:
+        - '{{{data_stream.namespace}}}'
+        - default
+      if: >-
+        ctx.data_stream?.dataset != null &&
+        ctx.data_stream.dataset != 'agent_fwdr.forwarded'

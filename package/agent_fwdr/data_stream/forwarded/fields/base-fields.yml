@@ -1,0 +1,26 @@
+- name: data_stream.type
+  type: constant_keyword
+  description: Data stream type.
+- name: data_stream.dataset
+  type: constant_keyword
+  description: Data stream dataset.
+- name: data_stream.namespace
+  type: constant_keyword
+  description: Data stream namespace.
+- name: '@timestamp'
+  type: date
+  description: Event timestamp.
+# Deliberately a plain keyword rather than a constant_keyword. Documents that pass through carry
+# the destination dataset value, not this data stream's own.
+- name: event.dataset
+  type: keyword
+  description: Event dataset.
+- name: input.type
+  type: keyword
+  description: Type of Filebeat input.
+- name: tags
+  type: keyword
+  description: User defined tags.
+- name: message
+  type: match_only_text
+  description: Log contents.

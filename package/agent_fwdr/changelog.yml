@@ -1,0 +1,51 @@
+# newer versions go on top
+- version: "0.5.0"
+  changes:
+    - description: >-
+        Fix forwarded_metrics and forwarded_traces lumberjack stream templates. The elastic-otel-collector
+        creates one filebeatreceiver per stream; a stream with enabled:false (and no other config) causes
+        a fatal "no inputs enabled" crash that prevents the main forwarded listener from starting.
+        Templates now configure loopback-only listen addresses (127.0.0.2:5044, 127.0.0.3:5044) so each
+        receiver initialises successfully without binding a reachable port. All downstream traffic
+        continues to arrive on the single 0.0.0.0:5044 listener.
+      type: bugfix
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/1
+    - description: Add self-contained script test (reroute.txtar) asserting all four canonical events arrive at their correct data streams, including cross-type logs→metrics and logs→traces rerouting, and that the output API key carries logs-*-*, metrics-*-*, and traces-*-* grants.
+      type: enhancement
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/1
+- version: "0.4.4"
+  changes:
+    - description: Replace companion stream vars with no-op stub templates so no port fields appear in the Kibana UI.
+      type: enhancement
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/1
+- version: "0.4.3"
+  changes:
+    - description: Change trusted CA field to single multi-line textarea for consistent UX with cert and key fields.
+      type: enhancement
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/1
+- version: "0.4.2"
+  changes:
+    - description: Make SSL certificate, key, and CA fields render as multi-line text areas.
+      type: enhancement
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/1
+- version: "0.4.1"
+  changes:
+    - description: Update documentation. Consolidate implementation notes into CONCEPT.md. Expand field reference for fleet.forwarder.*.
+      type: enhancement
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/1
+- version: "0.4.0"
+  changes:
+    - description: >-
+        Replace single SSL YAML field with separate "Trusted client certificate authorities"
+        (multi-value), "Server SSL certificate", and "Server SSL certificate key" fields to
+        match the Logstash output configuration experience.
+      type: enhancement
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/1
+    - description: Move remaining SSL options (client_authentication, verification_mode, etc.) to an Advanced SSL options YAML field.
+      type: enhancement
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/1
+- version: "0.1.0"
+  changes:
+    - description: Initial release.
+      type: enhancement
+      link: https://github.com/ThorbenJ/agent-fwdr/pull/1

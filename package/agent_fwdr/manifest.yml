@@ -1,0 +1,36 @@
+format_version: 3.6.6
+name: agent_fwdr
+title: "Agent Forwarder"
+version: 0.5.0
+source:
+  license: "Elastic-2.0"
+description: "Relay events from downstream Elastic Agents that cannot reach Elasticsearch directly, without deploying Logstash."
+type: integration
+categories:
+  - custom
+  - elastic_stack
+conditions:
+  kibana:
+    version: "^9.0.0"
+  elastic:
+    subscription: "basic"
+icons:
+  - src: /img/agent-forwarder.svg
+    title: Agent Forwarder logo
+    size: 32x32
+    type: image/svg+xml
+policy_templates:
+  - name: agent_fwdr
+    title: Forward Elastic Agent events
+    description: >-
+      Receive events from downstream Elastic Agents over the Lumberjack protocol and relay them to
+      their original data streams, regardless of type. Point a downstream agent's Logstash output
+      at this agent's single listener.
+    inputs:
+      - type: lumberjack
+        title: Receive forwarded events
+        description: >-
+          Listen for incoming connections from the Logstash output of downstream Elastic Agents.
+owner:
+  github: ThorbenJ
+  type: elastic

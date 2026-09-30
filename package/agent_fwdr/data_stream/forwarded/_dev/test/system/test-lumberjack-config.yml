@@ -1,0 +1,12 @@
+service: agent-fwdr-logs
+service_notify_signal: SIGHUP
+input: lumberjack
+data_stream:
+  vars:
+    listen_address: '0.0.0.0'
+    listen_port: 5044
+assert:
+  hit_count: 1
+  fields_present:
+    - fleet.forwarder.agent.id
+    - tags

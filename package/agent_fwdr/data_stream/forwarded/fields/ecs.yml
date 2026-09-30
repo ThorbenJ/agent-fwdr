@@ -1,0 +1,15 @@
+# ECS fields that appear in relayed payloads. This integration does not produce them - they belong
+# to whichever integration sent the event - but declaring the common ones keeps parked documents
+# well mapped and lets the pipeline tests carry realistic payloads.
+- external: ecs
+  name: ecs.version
+- external: ecs
+  name: log.file.path
+- external: ecs
+  name: trace.id
+- external: ecs
+  name: transaction.id
+- external: ecs
+  name: service.name
+- external: ecs
+  name: service.environment

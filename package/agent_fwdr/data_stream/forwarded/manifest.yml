@@ -1,0 +1,152 @@
+title: Forwarded events
+type: logs
+dataset: agent_fwdr.forwarded
+elasticsearch:
+  # The forwarder writes to whatever data stream the payload says it came from.
+  # dynamic_dataset + dynamic_namespace grant logs-*-*, but forwarded events may be metrics or
+  # traces. The additional index entries cover those types.
+  dynamic_dataset: true
+  dynamic_namespace: true
+  index_template:
+    mappings:
+      # A relay cannot declare the fields of the payloads it carries. Documents normally pass
+      # straight through to their real data stream, but any that cannot be rerouted are parked
+      # here and must still be indexable whatever they contain.
+      dynamic: true
+streams:
+  - input: lumberjack
+    title: Forwarded events
+    description: >-
+      Receive events from the Logstash output of downstream Elastic Agents and relay them to
+      the data streams they were originally destined for, regardless of type.
+    template_path: lumberjack.yml.hbs
+    vars:
+      - name: listen_address
+        type: text
+        title: Listen address
+        description: >-
+          Address to bind the listener to. Use `0.0.0.0` to accept connections on all interfaces.
+          Note that the input's own default is `localhost`, which silently accepts no remote
+          connections.
+        multi: false
+        required: true
+        show_user: true
+        default: 0.0.0.0
+      - name: listen_port
+        type: integer
+        title: Listen port
+        description: >-
+          TCP port to listen on. Must match the port configured in the downstream agent's
+          Logstash output.
+        multi: false
+        required: true
+        show_user: true
+        default: 5044
+      - name: ssl_certificate_authorities
+        type: textarea
+        title: Trusted client certificate authorities
+        description: >-
+          Certificate authority (or concatenated PEM bundle) used to verify the certificate
+          presented by connecting clients. Required for mutual TLS (strongly recommended).
+          The connecting client's common name is recorded as
+          `fleet.forwarder.tls.client.subject`.
+        multi: false
+        required: false
+        show_user: true
+      - name: ssl_certificate
+        type: textarea
+        title: Server SSL certificate
+        description: >-
+          Path or PEM content of the TLS certificate this listener presents to connecting clients.
+        multi: false
+        required: false
+        show_user: true
+      - name: ssl_key
+        type: textarea
+        title: Server SSL certificate key
+        description: >-
+          Path or PEM content of the TLS private key for the server certificate. Stored as a
+          secret; requires Fleet Server 8.12.0 or later.
+        multi: false
+        required: false
+        show_user: true
+        secret: true
+      - name: ssl_advanced
+        type: yaml
+        title: Advanced SSL options
+        description: >-
+          Additional TLS settings placed directly under the `ssl:` key. Indent each option with
+          two spaces, for example `  client_authentication: required`. See the
+          [SSL options](https://www.elastic.co/docs/reference/beats/filebeat/configuration-ssl)
+          documentation for the full list.
+        multi: false
+        required: false
+        show_user: false
+        default: |
+          #  client_authentication: required
+          #  verification_mode: full
+          #  supported_protocols: ["TLSv1.2", "TLSv1.3"]
+      - name: tags
+        type: text
+        title: Tags
+        description: >-
+          Tags added to every event received on this listener. Useful for labelling a listener by
+          site or tenant. Tags are moved to `fleet.forwarder.tags` during processing so they do not
+          collide with the forwarded event's own tags.
+        multi: true
+        required: false
+        show_user: true
+        default:
+          - forwarded
+      - name: versions
+        type: text
+        title: Lumberjack protocol versions
+        description: >-
+          Accepted protocol versions. Elastic Agent always speaks v2; only add v1 if you also need
+          to accept legacy logstash-forwarder clients.
+        multi: true
+        required: true
+        show_user: false
+        default:
+          - v2
+      - name: max_connections
+        type: integer
+        title: Maximum connections
+        description: >-
+          Maximum number of concurrent connections to accept. Leave empty for no limit.
+        multi: false
+        required: false
+        show_user: false
+      - name: keepalive
+        type: text
+        title: Keepalive interval
+        description: >-
+          How often to tell connected clients that a batch is still being processed, for example
+          `30s`. Note that in current Filebeat builds this value is also used as the connection
+          read/write timeout, and the separate `timeout` option is inoperative, so it is not
+          exposed here.
+        multi: false
+        required: false
+        show_user: false
+      - name: processors
+        type: yaml
+        title: Processors
+        description: >-
+          Processors applied by the agent before events are sent to Elasticsearch. The unwrapping of
+          forwarded events happens in an Elasticsearch ingest pipeline, not here, so these run
+          against the still-wrapped document where the payload is nested under `lumberjack`. See
+          [Processors](https://www.elastic.co/docs/reference/fleet/agent-processors) for details.
+        multi: false
+        required: false
+        show_user: false
+      - name: custom
+        type: yaml
+        title: Custom configuration
+        description: >-
+          Raw YAML appended to the input configuration. The lumberjack input is not formally
+          documented, so this is the escape hatch for options this integration does not model. Be
+          careful: entries here can override the settings above.
+        multi: false
+        required: false
+        show_user: false
+        default: ""
